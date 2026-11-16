@@ -81,6 +81,9 @@ type Model struct {
 	OpenBrowser func(url string, private bool) error
 	asciiForced bool
 	termBlurred bool
+	// pageMuted silences this run after the room page opens, which plays the
+	// same audio. It is never saved: by the next run the page may be closed.
+	pageMuted bool
 }
 
 // New builds the interface. initialRoom, if non-zero, overrides the saved room.
@@ -303,6 +306,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if msg.err != nil {
 			return m.flash("打开直播间失败: " + msg.err.Error())
 		}
+		m.pageMuted = true
+		m.player.Configure(m.audioOptions())
 		return nil
 	}
 
@@ -387,7 +392,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		m.inputFocus = true
 		return m.input.Focus()
 	case "m":
-		m.cfg.Muted = !m.cfg.Muted
+		if m.muted() {
+			m.cfg.Muted, m.pageMuted = false, false
+		} else {
+			m.cfg.Muted = true
+		}
 		return m.applyAudio()
 	case "+", "=":
 		return m.changeVolume(volumeStep)
@@ -445,8 +454,16 @@ func (m *Model) changeVolume(delta int) tea.Cmd {
 
 // applyAudio pushes audio settings to the player and persists them.
 func (m *Model) applyAudio() tea.Cmd {
-	m.player.Configure(AudioOptions(m.cfg))
+	m.player.Configure(m.audioOptions())
 	return m.saveConfig()
+}
+
+func (m *Model) muted() bool { return m.cfg.Muted || m.pageMuted }
+
+func (m *Model) audioOptions() audio.Options {
+	opts := AudioOptions(m.cfg)
+	opts.Muted = m.muted()
+	return opts
 }
 
 func (m *Model) layout() {
@@ -607,7 +624,7 @@ func (m *Model) audioView() string {
 	case audio.Failed:
 		state = redStyle.Render(m.audioStatus.Err)
 	}
-	if m.cfg.Muted {
+	if m.muted() {
 		return state + "  " + accentStyle.Render("静音")
 	}
 	return state + "  " + fmt.Sprintf("音量 %d", m.cfg.Volume)
