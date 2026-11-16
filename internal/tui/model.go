@@ -250,7 +250,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.termBlurred = true
 		return nil
 	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
+		// Screens lay out inside the margin; View adds it back.
+		m.width, m.height = max(msg.Width-2*marginX, 0), msg.Height
 		m.layout()
 		return nil
 	case tea.KeyMsg:
@@ -495,17 +496,28 @@ func (m *Model) View() string {
 	if m.width == 0 {
 		return ""
 	}
+	var view string
 	switch m.screen {
 	case screenRooms:
-		return m.roomsView()
+		view = m.roomsView()
 	case screenSettings:
-		return m.settingsView()
+		view = m.settingsView()
 	case screenLogin:
-		return m.loginView()
+		view = m.loginView()
 	case screenLoginPrompt:
-		return m.loginPromptView()
+		view = m.loginPromptView()
+	default:
+		view = m.mainView()
 	}
-	return m.mainView()
+	return indent(view, marginX)
+}
+
+// marginX keeps text clear of the rounded corners some terminal windows draw.
+const marginX = 1
+
+func indent(view string, n int) string {
+	pad := strings.Repeat(" ", n)
+	return pad + strings.ReplaceAll(view, "\n", "\n"+pad)
 }
 
 func (m *Model) mainView() string {
