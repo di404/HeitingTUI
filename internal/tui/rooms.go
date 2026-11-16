@@ -11,8 +11,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/di404/HeitingCLI/internal/bili"
-	"github.com/di404/HeitingCLI/internal/config"
+	"github.com/di404/HeitingTUI/internal/bili"
+	"github.com/di404/HeitingTUI/internal/config"
 )
 
 const roomInfoConcurrency = 4

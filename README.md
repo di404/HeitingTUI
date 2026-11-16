@@ -1,4 +1,4 @@
-# 黑听 HeitingCLI
+# 黑听 HeitingTUI
 
 在终端里听 B 站直播：播放直播间音频、看弹幕、发弹幕。
 
@@ -8,7 +8,7 @@
 ## 安装
 
 ```bash
-go install github.com/di404/HeitingCLI/cmd/heiting@latest
+go install github.com/di404/HeitingTUI/cmd/heiting@latest
 ```
 
 ## 使用

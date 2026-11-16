@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/di404/HeitingCLI/internal/config"
+	"github.com/di404/HeitingTUI/internal/config"
 )
 
 func runes(text string) tea.KeyMsg {

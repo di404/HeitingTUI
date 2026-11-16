@@ -6,8 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/di404/HeitingCLI/internal/bili"
-	"github.com/di404/HeitingCLI/internal/config"
+	"github.com/di404/HeitingTUI/internal/bili"
+	"github.com/di404/HeitingTUI/internal/config"
 )
 
 var (

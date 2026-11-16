@@ -1,4 +1,4 @@
-module github.com/di404/HeitingCLI
+module github.com/di404/HeitingTUI
 
 go 1.26.0
 

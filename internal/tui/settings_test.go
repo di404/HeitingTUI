@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/di404/HeitingCLI/internal/bili"
-	"github.com/di404/HeitingCLI/internal/config"
+	"github.com/di404/HeitingTUI/internal/bili"
+	"github.com/di404/HeitingTUI/internal/config"
 )
 
 // hasLogin probes the client's cookies without touching the network: SendDanmu

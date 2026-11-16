@@ -9,12 +9,12 @@ import (
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/di404/HeitingCLI/internal/audio"
-	"github.com/di404/HeitingCLI/internal/bili"
-	"github.com/di404/HeitingCLI/internal/browser"
-	"github.com/di404/HeitingCLI/internal/config"
-	"github.com/di404/HeitingCLI/internal/ime"
-	"github.com/di404/HeitingCLI/internal/tui"
+	"github.com/di404/HeitingTUI/internal/audio"
+	"github.com/di404/HeitingTUI/internal/bili"
+	"github.com/di404/HeitingTUI/internal/browser"
+	"github.com/di404/HeitingTUI/internal/config"
+	"github.com/di404/HeitingTUI/internal/ime"
+	"github.com/di404/HeitingTUI/internal/tui"
 )
 
 const maxLogSize = 5 << 20

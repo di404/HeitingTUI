@@ -25,7 +25,7 @@ var deviceContext = sync.OnceValues(func() (*oto.Context, error) {
 		SampleRate:      outputRate,
 		ChannelCount:    2,
 		Format:          oto.FormatSignedInt16LE,
-		ApplicationName: "HeitingCLI",
+		ApplicationName: "HeitingTUI",
 	})
 	if err != nil {
 		return nil, err

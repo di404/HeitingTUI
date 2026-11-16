@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/di404/HeitingCLI/internal/audio"
+	"github.com/di404/HeitingTUI/internal/audio"
 )
 
 type playInfo struct {
