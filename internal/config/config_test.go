@@ -36,7 +36,7 @@ func TestMissingKeysKeepDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.AutoPlay || cfg.Volume != 70 || cfg.ChatBuffer != 200 {
+	if cfg.Volume != 70 || cfg.ChatBuffer != 200 {
 		t.Fatalf("got %+v", cfg)
 	}
 }

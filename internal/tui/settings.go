@@ -101,7 +101,6 @@ func (m *Model) settingRows() []settingRow {
 
 	rows := []settingRow{
 		{label: "音频"},
-		boolRow("进房时播放", &cfg.AutoPlay, m.saveConfig),
 		intRow("音量", &cfg.Volume, 0, config.MaxVolume, volumeStep, applyAudio),
 		intRow("缓冲秒数", &cfg.CacheSeconds, 1, 30, 1, applyAudio),
 		{label: "弹幕"},
@@ -250,7 +249,7 @@ func (m *Model) applyAnonymous() tea.Cmd {
 	if !m.cfg.Anonymous {
 		m.client.SetCookies(config.LoadCookie())
 	}
-	if m.listening && m.session != nil {
+	if m.session != nil {
 		m.player.Play(m.cfg.RoomID)
 	}
 	return tea.Batch(m.saveConfig(), m.reconnectAccount())

@@ -28,7 +28,6 @@ type Room struct {
 type Config struct {
 	RoomID uint64 `toml:"room_id"`
 
-	AutoPlay     bool `toml:"auto_play"`
 	Volume       int  `toml:"volume"`
 	Muted        bool `toml:"muted"`
 	CacheSeconds int  `toml:"cache_seconds"`
@@ -54,7 +53,6 @@ type Config struct {
 // Default returns the settings used for anything missing from the file.
 func Default() *Config {
 	return &Config{
-		AutoPlay:       true,
 		Volume:         70,
 		CacheSeconds:   3,
 		ChatBuffer:     200,

@@ -60,7 +60,6 @@ type Model struct {
 	sessionError string
 
 	audioStatus audio.Status
-	listening   bool
 
 	danmu      []*danmuLine
 	viewport   viewport.Model
@@ -104,7 +103,6 @@ func New(cfg *config.Config, client *bili.Client, player *audio.Player, initialR
 		player:      player,
 		initialRoom: initialRoom,
 		darkTheme:   lipgloss.HasDarkBackground(),
-		listening:   cfg.AutoPlay,
 		viewport:    view,
 		input:       input,
 		follow:      true,
@@ -177,7 +175,7 @@ func (m *Model) enterApp() tea.Cmd {
 	return cmd
 }
 
-// switchRoom connects to a room and starts its audio if the user is listening.
+// switchRoom connects to a room and starts its audio.
 func (m *Model) switchRoom(roomID uint64) tea.Cmd {
 	m.room, m.user, m.property = nil, nil, nil
 	m.online = 0
@@ -188,11 +186,7 @@ func (m *Model) switchRoom(roomID uint64) tea.Cmd {
 	m.refreshDanmu()
 
 	cmd := m.openSession(roomID)
-	if m.listening {
-		m.player.Play(roomID)
-	} else {
-		m.player.Stop()
-	}
+	m.player.Play(roomID)
 	if m.cfg.RoomID != roomID {
 		m.cfg.RoomID = roomID
 		return tea.Batch(cmd, m.saveConfig())
@@ -399,14 +393,6 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.changeVolume(volumeStep)
 	case "-", "_":
 		return m.changeVolume(-volumeStep)
-	case "p":
-		m.listening = !m.listening
-		if m.listening {
-			m.player.Play(m.cfg.RoomID)
-		} else {
-			m.player.Stop()
-		}
-		return nil
 	case "r":
 		return m.openRooms()
 	case "s":
@@ -555,7 +541,7 @@ func (m *Model) mainView() string {
 		m.viewport.View(),
 		rule,
 		m.input.View(),
-		m.hintView("tab 输入  m 静音  +/- 音量  p 播放/停止  o 打开直播间  r 房间  s 设置  q 退出"),
+		m.hintView("tab 输入  m 静音  +/- 音量  o 打开直播间  r 房间  s 设置  q 退出"),
 	}, "\n")
 }
 
