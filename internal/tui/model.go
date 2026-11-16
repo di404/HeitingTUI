@@ -76,7 +76,10 @@ type Model struct {
 	login    loginState
 
 	// IMEControl, if set, turns the system input method on or off.
-	IMEControl  func(enabled bool)
+	IMEControl func(enabled bool)
+	// OpenBrowser, if set, opens url in the browser; private asks for a
+	// private window and must fail rather than use a normal one.
+	OpenBrowser func(url string, private bool) error
 	asciiForced bool
 	termBlurred bool
 }
@@ -213,6 +216,23 @@ func (m *Model) saveConfig() tea.Cmd {
 	return nil
 }
 
+type browserOpenedMsg struct{ err error }
+
+// openRoomPage opens the room's web page. In anonymous mode it uses a private
+// window, so the browser's login does not enter the room under the account.
+func (m *Model) openRoomPage() tea.Cmd {
+	if m.OpenBrowser == nil {
+		return m.flash("当前平台不支持打开浏览器")
+	}
+	roomID := m.cfg.RoomID
+	if m.room != nil {
+		roomID = m.displayRoomID()
+	}
+	url := fmt.Sprintf("https://live.bilibili.com/%d", roomID)
+	open, private := m.OpenBrowser, m.cfg.Anonymous
+	return func() tea.Msg { return browserOpenedMsg{err: open(url, private)} }
+}
+
 func (m *Model) flash(text string) tea.Cmd {
 	m.statusID++
 	m.status = text
@@ -283,6 +303,11 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case danmuSentMsg:
 		if msg.err != nil {
 			return m.flash("发送失败: " + msg.err.Error())
+		}
+		return nil
+	case browserOpenedMsg:
+		if msg.err != nil {
+			return m.flash("打开直播间失败: " + msg.err.Error())
 		}
 		return nil
 	}
@@ -387,6 +412,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	case "s":
 		m.openSettings()
 		return nil
+	case "o":
+		return m.openRoomPage()
 	}
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
@@ -528,7 +555,7 @@ func (m *Model) mainView() string {
 		m.viewport.View(),
 		rule,
 		m.input.View(),
-		m.hintView("tab 输入  m 静音  +/- 音量  p 播放/停止  r 房间  s 设置  q 退出"),
+		m.hintView("tab 输入  m 静音  +/- 音量  p 播放/停止  o 打开直播间  r 房间  s 设置  q 退出"),
 	}, "\n")
 }
 

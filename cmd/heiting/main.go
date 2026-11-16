@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/di404/HeitingCLI/internal/audio"
 	"github.com/di404/HeitingCLI/internal/bili"
+	"github.com/di404/HeitingCLI/internal/browser"
 	"github.com/di404/HeitingCLI/internal/config"
 	"github.com/di404/HeitingCLI/internal/ime"
 	"github.com/di404/HeitingCLI/internal/tui"
@@ -58,6 +59,12 @@ func run() error {
 	defer model.Close()
 
 	model.IMEControl = ime.SetEnabled
+	model.OpenBrowser = func(url string, private bool) error {
+		if private {
+			return browser.OpenPrivate(url)
+		}
+		return browser.Open(url)
+	}
 	defer ime.SetEnabled(true)
 
 	program := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus())
