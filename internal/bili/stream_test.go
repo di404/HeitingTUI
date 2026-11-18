@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/andybalholm/brotli"
+
+	"github.com/di404/HeitingTUI/internal/audio"
 )
 
 func compress(t *testing.T, data []byte) []byte {
@@ -99,7 +101,7 @@ func TestWbiKnownVector(t *testing.T) {
 	}
 }
 
-func TestFLVURLsOnlyFLVAndPreferNamedHosts(t *testing.T) {
+func TestAudioSourcePrefersFLVAndNamedHosts(t *testing.T) {
 	info := new(playInfo)
 	raw := `{"live_status":1,"playurl_info":{"playurl":{"stream":[
 	{"protocol_name":"http_hls","format":[{"format_name":"ts","codec":[{"base_url":"/hls","url_info":[{"host":"https://cn.example.com","extra":"?a"}]}]}]},
@@ -120,8 +122,26 @@ func TestFLVURLsOnlyFLVAndPreferNamedHosts(t *testing.T) {
 		"https://1.2.3.4:486/live?ip",
 		"https://x.mcdn.example.com/live?m",
 	}
-	if got := info.flvURLs(); !slices.Equal(got, want) {
-		t.Fatalf("got %v", got)
+	src, ok := info.audioSource()
+	if !ok || src.Format != audio.FLV || !slices.Equal(src.URLs, want) {
+		t.Fatalf("got %+v", src)
+	}
+}
+
+func TestAudioSourceFallsBackToFMP4HLS(t *testing.T) {
+	info := new(playInfo)
+	raw := `{"live_status":1,"playurl_info":{"playurl":{"stream":[
+	{"protocol_name":"http_hls","format":[
+		{"format_name":"ts","codec":[{"base_url":"/ts.m3u8","url_info":[{"host":"https://cn.example.com","extra":"?t"}]}]},
+		{"format_name":"fmp4","codec":[{"base_url":"/index.m3u8","url_info":[{"host":"https://cn.example.com","extra":"?f"}]}]}
+	]}
+	]}}}`
+	if err := json.Unmarshal([]byte(raw), info); err != nil {
+		t.Fatal(err)
+	}
+	src, ok := info.audioSource()
+	if !ok || src.Format != audio.HLS || !slices.Equal(src.URLs, []string{"https://cn.example.com/index.m3u8?f"}) {
+		t.Fatalf("got %+v", src)
 	}
 }
 

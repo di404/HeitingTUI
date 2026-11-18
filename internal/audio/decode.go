@@ -8,9 +8,16 @@ import (
 	"github.com/tphakala/go-aac/pcm"
 )
 
+// aacSource serves raw AAC access units, each prefixed with its 16-bit
+// length, and returns io.EOF from Read when the AudioSpecificConfig changes.
+type aacSource interface {
+	io.Reader
+	nextConfig() ([]byte, error)
+}
+
 // decodeStream decodes src until it ends, passing 48 kHz stereo s16le PCM to
 // write. It only returns on an error.
-func decodeStream(src *flvSource, write func([]byte)) error {
+func decodeStream(src aacSource, write func([]byte)) error {
 	buf := make([]byte, 16*1024)
 	var converted []byte
 	for {

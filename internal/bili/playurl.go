@@ -33,23 +33,22 @@ type playInfo struct {
 	} `json:"playurl_info"`
 }
 
-// flvURLs lists the stream's FLV addresses, named CDN nodes first: bare IPs
-// and peer-assisted "mcdn" hosts are less reliable. only_audio has no effect
-// on HLS, so only FLV is usable.
-func (p *playInfo) flvURLs() []string {
+// streamURLs lists the addresses of one protocol and container, named CDN
+// nodes first: bare IPs and peer-assisted "mcdn" hosts are less reliable.
+func (p *playInfo) streamURLs(protocol, format string) []string {
 	if p.PlayurlInfo == nil || p.PlayurlInfo.Playurl == nil {
 		return nil
 	}
 	var urls []string
 	for _, stream := range p.PlayurlInfo.Playurl.Stream {
-		if stream.ProtocolName != "http_stream" {
+		if stream.ProtocolName != protocol {
 			continue
 		}
-		for _, format := range stream.Format {
-			if format.FormatName != "flv" {
+		for _, f := range stream.Format {
+			if f.FormatName != format {
 				continue
 			}
-			for _, codec := range format.Codec {
+			for _, codec := range f.Codec {
 				if codec.IsPushing != nil && !*codec.IsPushing {
 					continue
 				}
@@ -65,6 +64,19 @@ func (p *playInfo) flvURLs() []string {
 	return urls
 }
 
+// audioSource picks the stream to play. only_audio=1 strips the video from
+// FLV and from fMP4 HLS (down to a near-empty track), but not from TS HLS.
+// Some rooms, such as big game launches, are only offered as fMP4 HLS.
+func (p *playInfo) audioSource() (audio.Source, bool) {
+	if urls := p.streamURLs("http_stream", "flv"); len(urls) > 0 {
+		return audio.Source{URLs: urls, Format: audio.FLV}, true
+	}
+	if urls := p.streamURLs("http_hls", "fmp4"); len(urls) > 0 {
+		return audio.Source{URLs: urls, Format: audio.HLS}, true
+	}
+	return audio.Source{}, false
+}
+
 func unreliableHost(raw string) bool {
 	parsed, err := url.Parse(raw)
 	if err != nil {
@@ -73,7 +85,7 @@ func unreliableHost(raw string) bool {
 	return net.ParseIP(parsed.Hostname()) != nil || strings.Contains(parsed.Hostname(), "mcdn")
 }
 
-// ResolveAudio finds the room's audio-only stream. With only_audio=1 the FLV
+// ResolveAudio finds the room's audio-only stream. With only_audio=1 the
 // stream carries no video, although its URL and metadata look unchanged. Rooms
 // without transcoding only list their stream under ptype=1.
 func (c *Client) ResolveAudio(ctx context.Context, roomID uint64) (audio.Source, error) {
@@ -88,8 +100,9 @@ func (c *Client) ResolveAudio(ctx context.Context, roomID uint64) (audio.Source,
 		if info.LiveStatus != 1 {
 			return audio.Source{}, audio.ErrOffline
 		}
-		if urls := info.flvURLs(); len(urls) > 0 {
-			return audio.Source{URLs: urls, UserAgent: c.UserAgent(), Referer: liveReferer}, nil
+		if src, ok := info.audioSource(); ok {
+			src.UserAgent, src.Referer = c.UserAgent(), liveReferer
+			return src, nil
 		}
 	}
 	return audio.Source{}, audio.ErrNoStream

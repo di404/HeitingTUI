@@ -1,11 +1,13 @@
-// Package audio plays a live room's audio-only FLV stream inside the process:
-// HTTP, FLV demuxing, AAC decoding and output to the system's default device.
+// Package audio plays a live room's audio-only stream inside the process:
+// HTTP, FLV or fMP4 HLS demuxing, AAC decoding and output to the system's
+// default device.
 package audio
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -28,9 +30,20 @@ type fatalError struct {
 
 func (e fatalError) Error() string { return e.msg }
 
+// Format is a stream's protocol and container.
+type Format int
+
+const (
+	// FLV is a single HTTP-FLV response.
+	FLV Format = iota
+	// HLS is a live HLS playlist of fragmented MP4 segments.
+	HLS
+)
+
 // Source lists the addresses of one stream, best first.
 type Source struct {
 	URLs      []string
+	Format    Format
 	UserAgent string
 	Referer   string
 }
@@ -315,11 +328,11 @@ func (p *Player) playOnce(ctx context.Context, src Source) error {
 	p.attach(track, queue)
 	defer p.detach()
 
-	conn, flv, err := p.connect(ctx, src)
+	stream, err := p.connect(ctx, src)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer stream.Close()
 
 	watched := make(chan struct{})
 	watchCtx, stopWatch := context.WithCancel(ctx)
@@ -332,7 +345,7 @@ func (p *Player) playOnce(ctx context.Context, src Source) error {
 		<-watched
 	}()
 
-	err = decodeStream(flv, queue.Write)
+	err = decodeStream(stream, queue.Write)
 	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
 		return cause
 	}
@@ -366,26 +379,45 @@ func (p *Player) watch(ctx, statusCtx context.Context, queue *pcmQueue, track si
 	}
 }
 
-// connect opens the first address that delivers an FLV stream.
-func (p *Player) connect(ctx context.Context, src Source) (*connection, *flvSource, error) {
+type stream interface {
+	aacSource
+	io.Closer
+}
+
+type flvStream struct {
+	*flvSource
+	io.Closer
+}
+
+// connect opens the first address that delivers a stream.
+func (p *Player) connect(ctx context.Context, src Source) (stream, error) {
 	err := error(ErrNoStream)
 	for _, url := range src.URLs {
-		var conn *connection
-		conn, err = p.dial(ctx, url, src)
-		if err != nil {
-			slog.Warn("connect stream", "err", err)
-			continue
-		}
-		var flv *flvSource
-		flv, err = newFLVSource(conn)
+		var s stream
+		s, err = p.openStream(ctx, url, src)
 		if err != nil {
 			slog.Warn("open stream", "err", err)
-			conn.Close()
 			continue
 		}
-		return conn, flv, nil
+		return s, nil
 	}
-	return nil, nil, err
+	return nil, err
+}
+
+func (p *Player) openStream(ctx context.Context, url string, src Source) (stream, error) {
+	if src.Format == HLS {
+		return openHLS(ctx, p.client, url, src)
+	}
+	conn, err := p.dial(ctx, url, src)
+	if err != nil {
+		return nil, err
+	}
+	flv, err := newFLVSource(conn)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return flvStream{flv, conn}, nil
 }
 
 const stallTimeout = 10 * time.Second
