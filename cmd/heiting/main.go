@@ -32,6 +32,11 @@ func run() error {
 		return fmt.Errorf("用法: %s [房间号或直播间链接]", filepath.Base(os.Args[0]))
 	}
 	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "-h", "--help", "help":
+			fmt.Print(usage(filepath.Base(os.Args[0])))
+			return nil
+		}
 		id, ok := bili.ParseRoomID(os.Args[1])
 		if !ok {
 			return fmt.Errorf("无效的房间号或直播间链接: %s", os.Args[1])
@@ -80,6 +85,25 @@ func run() error {
 
 	_, err = program.Run()
 	return err
+}
+
+func usage(name string) string {
+	return fmt.Sprintf(`用法:
+  %[1]s                                 打开房间列表
+  %[1]s <房间号>                        按房间号打开
+  %[1]s <https://live.bilibili.com/..>  按链接打开
+  %[1]s -h, --help                      显示帮助
+
+按键:
+  tab         切换弹幕输入 / 返回
+  m           静音
+  + -         调节音量
+  o           在浏览器打开直播间
+  r           房间列表
+  s           设置
+  ↑ ↓ j k     滚动弹幕
+  q           退出
+`, name)
 }
 
 // setupLog sends logs to a file; anything on stderr would corrupt the screen.
