@@ -60,6 +60,54 @@ func testBg(d int) string {
 	return "\x1b[48;5;2m"
 }
 
+func TestOverlayBarLeavesGapsClear(t *testing.T) {
+	bg := func(d int) string {
+		if d == 1 {
+			return ""
+		}
+		return "\x1b[48;5;1m"
+	}
+	got := overlayBar("ab", 5, 3, bg)
+	if want := "ab\x1b[48;5;1m \x1b[49m \x1b[48;5;1m \x1b[49m"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestCapIsPushedUpAndFalls(t *testing.T) {
+	s := newVisualizerState(true)
+	s.caps, s.capV, s.capWait = make([]float64, 1), make([]float64, 1), make([]time.Duration, 1)
+	tick := 33 * time.Millisecond
+	s.moveCap(0, 10, tick)
+	if s.caps[0] != 10 {
+		t.Fatalf("not pushed up: %.1f", s.caps[0])
+	}
+	s.moveCap(0, 1, tick)
+	if s.caps[0] != 10 {
+		t.Fatalf("fell without a pause: %.1f", s.caps[0])
+	}
+	var fell []float64
+	for range 20 {
+		s.moveCap(0, 1, tick)
+		fell = append(fell, s.caps[0])
+	}
+	if fell[len(fell)-1] != 1 {
+		t.Fatalf("did not land on the bar: %v", fell)
+	}
+	first, second := 0, 0
+	for i := 1; i < len(fell); i++ {
+		if fell[i] < fell[i-1] {
+			if first == 0 {
+				first = i
+			} else if second == 0 {
+				second = i
+			}
+		}
+	}
+	if d1, d2 := fell[first-1]-fell[first], fell[second-1]-fell[second]; d2 <= d1 {
+		t.Fatalf("did not speed up: %v", fell)
+	}
+}
+
 func TestOverlayBarKeepsText(t *testing.T) {
 	line := "\x1b[38;5;3m小明:\x1b[0m hello"
 	got := overlayBar(line, 20, 6, testBg)
@@ -211,5 +259,27 @@ func TestBackgroundNoiseStaysStill(t *testing.T) {
 	s.step(true, 13, tick)
 	if s.envelope < 0.8 {
 		t.Fatalf("voice over the noise only reached %.2f", s.envelope)
+	}
+}
+
+func TestBlockCoverFadesAndGrowsSmoothly(t *testing.T) {
+	for _, length := range []float64{1, 3.3, 12} {
+		prev := 2.0
+		for d := range int(math.Ceil(length)) {
+			c := blockCover(d, length)
+			if c <= 0 || c > 1 || c > prev {
+				t.Fatalf("length %.1f cell %d: %.3f after %.3f", length, d, c, prev)
+			}
+			prev = c
+		}
+		if c := blockCover(int(math.Ceil(length)), length); c != 0 {
+			t.Fatalf("length %.1f paints past its end: %.3f", length, c)
+		}
+	}
+	// A tenth of a cell more changes each cell by only a little.
+	for d := range 6 {
+		if diff := blockCover(d, 5.1) - blockCover(d, 5); diff < 0 || diff > 0.1 {
+			t.Fatalf("cell %d jumped %.3f", d, diff)
+		}
 	}
 }

@@ -23,7 +23,10 @@ import (
 //
 //   - lines: lower-half block characters, so each bar is half a row tall
 //     and rows stay apart, like a voice-input indicator cut in half;
-//   - blocks: background tint filling whole cells.
+//   - gradient: background tint, strongest at the edge and fading out
+//     towards the tip, so a bar can end part-way through a cell;
+//   - blocks: background tint in whole cells, with a brighter cap that the
+//     bar pushes up and that then falls back down.
 const (
 	visualizerInterval = time.Second / 30
 	// envelopeWindow is how many samples the loudness is measured over.
@@ -68,6 +71,11 @@ const (
 	// as many cells as lines get half cells, to move in as many steps.
 	lineMax  = 12
 	blockMax = lineMax
+	// capHold is how long a block cap stays where the bar pushed it before
+	// falling, and capGravity how fast it then speeds up, in cells per second
+	// squared.
+	capHold    = 120 * time.Millisecond
+	capGravity = 60.0
 	// visualizerMinWidth is the narrowest chat that still gets a visualiser.
 	visualizerMinWidth = 30
 )
@@ -90,8 +98,13 @@ type visualizerState struct {
 
 	top, bottom colorful.Color // bar colours at the top and bottom rows
 	bg          colorful.Color
-	bodyA, tipA float64 // block opacity at the edge and at the tip
-	colors      map[[4]int]string
+	edgeA       float64 // gradient opacity at the right edge, where it is strongest
+	bodyA, capA float64 // block opacity of the bar and of its cap
+
+	caps    []float64 // where each row's cap is, in cells
+	capV    []float64 // how fast each cap is falling, in cells per second
+	capWait []time.Duration
+	colors  map[[4]int]string
 }
 
 func newVisualizerState(dark bool) visualizerState {
@@ -105,12 +118,14 @@ func newVisualizerState(dark bool) visualizerState {
 		s.top, _ = colorful.Hex("#5CD8F6")
 		s.bottom, _ = colorful.Hex("#9A8CFF")
 		s.bg, _ = colorful.Hex("#1E1E1E")
-		s.bodyA, s.tipA = 0.42, 0.9
+		s.edgeA = 0.85
+		s.bodyA, s.capA = 0.42, 0.9
 	} else {
 		s.top, _ = colorful.Hex("#0B9AD0")
 		s.bottom, _ = colorful.Hex("#6150D8")
 		s.bg, _ = colorful.Hex("#FFFFFF")
-		s.bodyA, s.tipA = 0.22, 0.55
+		s.edgeA = 0.55
+		s.bodyA, s.capA = 0.22, 0.55
 	}
 	if c := terminalBackground(); c != nil {
 		s.bg = *c
@@ -131,7 +146,7 @@ func terminalBackground() *colorful.Color {
 
 func (m *Model) visualizerStyle() string {
 	switch m.cfg.Visualizer {
-	case config.VisualizerOff, config.VisualizerBlocks:
+	case config.VisualizerOff, config.VisualizerBlocks, config.VisualizerGradient:
 		return m.cfg.Visualizer
 	}
 	return config.VisualizerLines
@@ -159,7 +174,7 @@ func (m *Model) stepVisualizer() tea.Cmd {
 	s := &m.visualizer
 	style := m.visualizerStyle()
 	if style == config.VisualizerOff || m.audioStatus.State != audio.Playing {
-		s.levels, s.blocks = nil, nil
+		s.levels, s.blocks, s.caps = nil, nil, nil
 		s.ticking = false
 		return nil
 	}
@@ -198,6 +213,9 @@ func (s *visualizerState) step(live bool, rows int, dt time.Duration) {
 	if len(s.levels) != rows {
 		s.levels = make([]float64, rows)
 		s.blocks = make([]float64, rows)
+		s.caps = make([]float64, rows)
+		s.capV = make([]float64, rows)
+		s.capWait = make([]time.Duration, rows)
 		s.jitter = make([]float64, rows)
 		s.targets = make([]float64, rows)
 		for i := range s.jitter {
@@ -225,6 +243,26 @@ func (s *visualizerState) step(live bool, rows int, dt time.Duration) {
 		// Blocks move a whole cell at a time and twice as far, so any floor
 		// shows as a solid slab; they span the full range instead.
 		s.blocks[i] = s.envelope * (0.75 + 0.25*math.Cos(u*math.Pi/2)) * s.jitter[i]
+		s.moveCap(i, float64(blockCells(s.blocks[i])), dt)
+	}
+}
+
+// blockCells is how many whole cells a block bar at level takes.
+func blockCells(level float64) int {
+	return 1 + int(math.Round(level*(blockMax-1)))
+}
+
+// moveCap lets the bar push row i's cap up to its length, and otherwise lets
+// the cap fall back after a moment, speeding up as it goes.
+func (s *visualizerState) moveCap(i int, length float64, dt time.Duration) {
+	switch {
+	case length >= s.caps[i]:
+		s.caps[i], s.capV[i], s.capWait[i] = length, 0, capHold
+	case s.capWait[i] > 0:
+		s.capWait[i] -= dt
+	default:
+		s.capV[i] += capGravity * dt.Seconds()
+		s.caps[i] = max(s.caps[i]-s.capV[i]*dt.Seconds(), length)
 	}
 }
 
@@ -296,10 +334,24 @@ func (m *Model) chatView() string {
 		if i >= len(levels) {
 			break
 		}
-		if style == config.VisualizerBlocks {
-			n := 1 + int(math.Round(m.visualizer.blocks[i]*(blockMax-1)))
-			lines[i] = overlayBar(lines[i], width, n, func(d int) string {
-				return m.blockColor(i, len(levels), d, n)
+		switch style {
+		case config.VisualizerGradient:
+			length := 1 + m.visualizer.blocks[i]*(blockMax-1)
+			lines[i] = overlayBar(lines[i], width, int(math.Ceil(length)), func(d int) string {
+				return m.gradientColor(i, len(levels), blockCover(d, length))
+			})
+			continue
+		case config.VisualizerBlocks:
+			n := blockCells(m.visualizer.blocks[i])
+			top := max(int(math.Round(m.visualizer.caps[i])), n) - 1 // the cap's cell
+			lines[i] = overlayBar(lines[i], width, top+1, func(d int) string {
+				switch {
+				case d == top:
+					return m.capColor(i, len(levels))
+				case d < n:
+					return m.blockColor(i, len(levels), d, n)
+				}
+				return ""
 			})
 			continue
 		}
@@ -371,22 +423,70 @@ func (m *Model) lineColor(i, n int) string {
 	return seq
 }
 
-// blockColor is the background for the cell d columns in from the right
-// edge on row i of n, whose bar is length cells long: the row's colour laid
-// over the background, strongest at the tip so the tips draw the outline.
-// Even the faintest cell is clearly tinted, because a cell barely off the
-// background reads as a dark smudge on a translucent terminal.
-func (m *Model) blockColor(i, n, d, length int) string {
-	key := [4]int{1, i, n, d<<8 | length}
-	if seq, ok := m.visualizer.colors[key]; ok {
-		return seq
+// blockFade is how sharply a block bar fades towards its tip: its opacity at
+// a fraction x of the way from the edge to the tip is 1-x^blockFade, so the
+// body stays strong and the last part thins out.
+const blockFade = 1.5
+
+// blockCover is how much of the cell d columns in from the right edge a bar
+// length cells long covers, weighted by the fade: the integral of the
+// opacity profile over the part of the cell inside the bar. As the bar grows
+// by a fraction of a cell, its cells darken by a fraction, so it moves as
+// smoothly as the level does instead of in whole cells.
+func blockCover(d int, length float64) float64 {
+	a, b := float64(d), min(float64(d+1), length)
+	if b <= a {
+		return 0
+	}
+	integral := func(x float64) float64 {
+		return x - math.Pow(x/length, blockFade+1)*length/(blockFade+1)
+	}
+	return integral(b) - integral(a)
+}
+
+// gradientColor is the background for a cell on row i of n that a gradient
+// bar covers by cover (0–1): the row's colour laid over the background with
+// that much of the edge opacity. Cells too faint to tell from the background
+// are left alone, because a cell barely off it reads as a smudge on a
+// translucent terminal.
+func (m *Model) gradientColor(i, n int, cover float64) string {
+	const steps = 48
+	q := int(math.Round(cover * steps))
+	if q < 4 {
+		return ""
 	}
 	s := &m.visualizer
-	alpha := s.tipA
-	if d < length-1 {
-		alpha = s.bodyA + (s.tipA-s.bodyA)*0.5*float64(d)/float64(length)
+	return s.cached([4]int{1, i, n, q}, func() colorful.Color {
+		return s.bg.BlendRgb(s.rowTint(i, n), s.edgeA*float64(q)/steps)
+	})
+}
+
+// blockColor is the background for the cell d columns in from the right edge
+// of a block bar length cells long on row i of n, a little stronger towards
+// the tip.
+func (m *Model) blockColor(i, n, d, length int) string {
+	s := &m.visualizer
+	return s.cached([4]int{2, i, n, d<<8 | length}, func() colorful.Color {
+		alpha := s.bodyA + (s.capA-s.bodyA)*0.5*float64(d)/float64(length)
+		return s.bg.BlendRgb(s.rowTint(i, n), alpha)
+	})
+}
+
+// capColor is the background of the cap on row i of n.
+func (m *Model) capColor(i, n int) string {
+	s := &m.visualizer
+	return s.cached([4]int{3, i, n, 0}, func() colorful.Color {
+		return s.bg.BlendRgb(s.rowTint(i, n), s.capA)
+	})
+}
+
+// cached returns the background sequence for key, working it out with color
+// the first time.
+func (s *visualizerState) cached(key [4]int, color func() colorful.Color) string {
+	if seq, ok := s.colors[key]; ok {
+		return seq
 	}
-	seq := colorSequence(s.bg.BlendRgb(s.rowTint(i, n), alpha), true)
+	seq := colorSequence(color(), true)
 	if len(s.colors) > 8192 {
 		clear(s.colors)
 	}
@@ -407,22 +507,32 @@ func colorSequence(c colorful.Color, background bool) string {
 }
 
 // overlayBar gives the last n columns of a line of the given width the
-// background bg(d), where d counts columns in from the right edge. Cells that
-// already have a background, such as fan medals, keep it.
+// background bg(d), where d counts columns in from the right edge; "" leaves
+// a cell with the terminal's own. Cells that already have a background, such
+// as fan medals, keep it.
 func overlayBar(line string, width, n int, bg func(d int) string) string {
 	start := width - n
 	var out strings.Builder
 	col := 0
 	ownBg := false // the line has set a background of its own
 	current := ""  // the bar background currently in effect
-	paint := func() {
-		if ownBg || col < start {
+	setBg := func(seq string) {
+		if seq == current {
 			return
 		}
-		if seq := bg(width - 1 - col); seq != current {
+		if seq == "" {
+			out.WriteString("\x1b[49m")
+		} else {
 			out.WriteString(seq)
-			current = seq
 		}
+		current = seq
+	}
+	put := func(seq string, w int) {
+		if !ownBg && col >= start {
+			setBg(bg(width - 1 - col))
+		}
+		out.WriteString(seq)
+		col += w
 	}
 	state := byte(0)
 	for len(line) > 0 {
@@ -440,13 +550,10 @@ func overlayBar(line string, width, n int, bg func(d int) string) string {
 			}
 			continue
 		}
-		paint()
-		out.WriteString(seq)
-		col += w
+		put(seq, w)
 	}
-	for ; col < width; col++ {
-		paint()
-		out.WriteByte(' ')
+	for col < width {
+		put(" ", 1)
 	}
 	if current != "" {
 		out.WriteString("\x1b[49m")

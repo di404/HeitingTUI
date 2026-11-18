@@ -41,7 +41,7 @@ type Config struct {
 	ShowRoomTitle  bool `toml:"show_room_title"`
 	ShowRoomNumber bool `toml:"show_room_number"`
 	// Visualizer is the audio visualiser style: VisualizerOff,
-	// VisualizerBlocks or VisualizerLines.
+	// VisualizerBlocks, VisualizerGradient or VisualizerLines.
 	Visualizer     string `toml:"visualizer"`
 	ColorMode      bool   `toml:"color_mode"`
 	ShowShipLevel  bool   `toml:"show_ship_level"`
@@ -55,9 +55,10 @@ type Config struct {
 
 // Audio visualiser styles.
 const (
-	VisualizerOff    = "off"
-	VisualizerBlocks = "blocks"
-	VisualizerLines  = "lines"
+	VisualizerOff      = "off"
+	VisualizerBlocks   = "blocks"
+	VisualizerGradient = "gradient"
+	VisualizerLines    = "lines"
 )
 
 // Default returns the settings used for anything missing from the file.
