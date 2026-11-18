@@ -1,6 +1,10 @@
 package audio
 
-import "sync"
+import (
+	"encoding/binary"
+	"math"
+	"sync"
+)
 
 // driftSeconds is how far the queue may grow past its target before it is cut
 // back, so delay cannot build up on a live stream.
@@ -17,6 +21,11 @@ type pcmQueue struct {
 	started bool
 	boost   float64
 	applied float64
+
+	// energy and frames accumulate the samples played since the last call to
+	// level, before the volume boost is applied.
+	energy float64
+	frames int
 }
 
 func newPCMQueue(seconds int) *pcmQueue {
@@ -69,6 +78,7 @@ func (q *pcmQueue) Read(p []byte) (int, error) {
 	}
 	n := copy(p[:size], q.data[q.head:])
 	q.head += n
+	q.measure(p[:n])
 	amplify(p[:n], q.applied, q.boost)
 	q.applied = q.boost
 	return n, nil
@@ -78,4 +88,26 @@ func (q *pcmQueue) playing() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	return q.started
+}
+
+// measure adds the frames in pcm to the running level.
+func (q *pcmQueue) measure(pcm []byte) {
+	for i := 0; i+1 < len(pcm); i += 2 {
+		v := float64(int16(binary.LittleEndian.Uint16(pcm[i:]))) / 32768
+		q.energy += v * v
+	}
+	q.frames += len(pcm) / outputBytesPerFrame
+}
+
+// level returns the RMS of the samples played since the last call, from 0 to
+// 1, and starts a new measurement.
+func (q *pcmQueue) level() float64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.frames == 0 {
+		return 0
+	}
+	rms := math.Sqrt(q.energy / float64(q.frames*2))
+	q.energy, q.frames = 0, 0
+	return rms
 }

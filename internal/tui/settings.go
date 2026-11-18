@@ -112,6 +112,9 @@ func (m *Model) settingRows() []settingRow {
 		{label: "界面"},
 		boolRow("显示直播标题", &cfg.ShowRoomTitle, m.saveConfig),
 		boolRow("显示房间号", &cfg.ShowRoomNumber, m.saveConfig),
+		boolRow("音频波形", &cfg.ShowWave, func() tea.Cmd {
+			return tea.Batch(m.saveConfig(), m.startWave())
+		}),
 		{label: "网络"},
 		textRow("User-Agent", &cfg.UserAgent, "默认", applyUA),
 		{label: "账号"},

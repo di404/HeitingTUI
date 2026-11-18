@@ -342,3 +342,23 @@ func TestNoDeviceFailsWithoutRetry(t *testing.T) {
 		t.Fatalf("got %+v", status)
 	}
 }
+
+func TestQueueLevel(t *testing.T) {
+	q := newPCMQueue(0)
+	block := make([]byte, outputBytesPerSecond/10)
+	for i := 0; i < len(block); i += 2 {
+		v := int16(16384)
+		if i/2%2 == 1 {
+			v = -16384
+		}
+		block[i], block[i+1] = byte(v), byte(uint16(v)>>8)
+	}
+	q.Write(block)
+	q.Read(make([]byte, len(block)))
+	if l := q.level(); math.Abs(l-0.5) > 0.001 {
+		t.Fatalf("level %.3f, want 0.5", l)
+	}
+	if q.level() != 0 {
+		t.Fatal("level not reset")
+	}
+}

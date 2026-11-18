@@ -114,6 +114,18 @@ func (p *Player) Status() Status {
 	return p.status
 }
 
+// Level returns the loudness of the audio played since the previous call, from
+// 0 to 1, before the volume is applied. It is 0 when nothing is playing.
+func (p *Player) Level() float64 {
+	p.mu.Lock()
+	queue := p.queue
+	p.mu.Unlock()
+	if queue == nil {
+		return 0
+	}
+	return queue.level()
+}
+
 // Play starts playing a room, replacing whatever was playing.
 func (p *Player) Play(roomID uint64) {
 	p.mu.Lock()

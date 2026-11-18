@@ -60,6 +60,7 @@ type Model struct {
 	sessionError string
 
 	audioStatus audio.Status
+	wave        waveState
 
 	danmu      []*danmuLine
 	viewport   viewport.Model
@@ -100,12 +101,14 @@ func New(cfg *config.Config, client *bili.Client, player *audio.Player, initialR
 		Down:     key.NewBinding(key.WithKeys("down", "j")),
 	}
 
+	dark := lipgloss.HasDarkBackground()
 	return &Model{
 		cfg:         cfg,
 		client:      client,
 		player:      player,
 		initialRoom: initialRoom,
-		darkTheme:   lipgloss.HasDarkBackground(),
+		darkTheme:   dark,
+		wave:        newWaveState(dark),
 		viewport:    view,
 		input:       input,
 		follow:      true,
@@ -291,7 +294,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case playerMsg:
 		m.audioStatus = audio.Status(msg)
-		return waitPlayer(m.player)
+		return tea.Batch(waitPlayer(m.player), m.startWave())
+	case waveTickMsg:
+		return m.stepWave()
 	case sessionMsg:
 		if msg.session != m.session {
 			return nil
@@ -555,7 +560,7 @@ func (m *Model) mainView() string {
 	return strings.Join([]string{
 		m.headerView(),
 		rule,
-		m.viewport.View(),
+		m.chatView(),
 		rule,
 		m.input.View(),
 		m.hintView("tab 输入  m 静音  +/- 音量  o 打开直播间  r 房间  s 设置  q 退出"),
