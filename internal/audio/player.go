@@ -114,16 +114,26 @@ func (p *Player) Status() Status {
 	return p.status
 }
 
-// Level returns the loudness of the audio played since the previous call, from
-// 0 to 1, before the volume is applied. It is 0 when nothing is playing.
-func (p *Player) Level() float64 {
+// SampleRate is the rate of the samples Samples returns.
+const SampleRate = outputRate
+
+// Samples fills dst with the mono samples being heard right now, oldest first,
+// before the volume is applied. It reports false when nothing is playing.
+func (p *Player) Samples(dst []float32) bool {
 	p.mu.Lock()
-	queue := p.queue
+	queue, track := p.queue, p.track
 	p.mu.Unlock()
 	if queue == nil {
-		return 0
+		return false
 	}
-	return queue.level()
+	// Samples leave the queue well before they reach the speaker: skip back
+	// over what is still waiting to be played.
+	delay := int(outputLatency().Seconds() * outputRate)
+	if b, ok := track.(interface{ BufferedSize() int }); ok {
+		delay += b.BufferedSize() / outputBytesPerFrame
+	}
+	queue.samples(dst, delay)
+	return true
 }
 
 // Play starts playing a room, replacing whatever was playing.

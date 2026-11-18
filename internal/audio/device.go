@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/ebitengine/oto/v3"
 )
@@ -18,6 +19,10 @@ type sink interface {
 // opener starts playing pcm, which is always 48 kHz stereo s16le.
 type opener func(ctx context.Context, pcm io.Reader) (sink, error)
 
+// deviceBuffer is how much audio the system's output queue holds, set rather
+// than left to oto's default so the visualizer can account for it.
+const deviceBuffer = 128 * time.Millisecond
+
 // deviceContext opens the system's default output. oto allows one context per
 // process and cannot close it, so it lives until exit.
 var deviceContext = sync.OnceValues(func() (*oto.Context, error) {
@@ -25,6 +30,7 @@ var deviceContext = sync.OnceValues(func() (*oto.Context, error) {
 		SampleRate:      outputRate,
 		ChannelCount:    2,
 		Format:          oto.FormatSignedInt16LE,
+		BufferSize:      deviceBuffer,
 		ApplicationName: "HeitingTUI",
 	})
 	if err != nil {

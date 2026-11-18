@@ -60,7 +60,7 @@ type Model struct {
 	sessionError string
 
 	audioStatus audio.Status
-	wave        waveState
+	visualizer  visualizerState
 
 	danmu      []*danmuLine
 	viewport   viewport.Model
@@ -108,7 +108,7 @@ func New(cfg *config.Config, client *bili.Client, player *audio.Player, initialR
 		player:      player,
 		initialRoom: initialRoom,
 		darkTheme:   dark,
-		wave:        newWaveState(dark),
+		visualizer:  newVisualizerState(dark),
 		viewport:    view,
 		input:       input,
 		follow:      true,
@@ -294,9 +294,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case playerMsg:
 		m.audioStatus = audio.Status(msg)
-		return tea.Batch(waitPlayer(m.player), m.startWave())
-	case waveTickMsg:
-		return m.stepWave()
+		return tea.Batch(waitPlayer(m.player), m.startVisualizer())
+	case visualizerTickMsg:
+		return m.stepVisualizer()
 	case sessionMsg:
 		if msg.session != m.session {
 			return nil

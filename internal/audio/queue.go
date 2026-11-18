@@ -2,9 +2,13 @@ package audio
 
 import (
 	"encoding/binary"
-	"math"
 	"sync"
 )
+
+// scopeSize is how many of the most recently played mono samples are kept for
+// the spectrum. The device holds on to about half a second of audio before it
+// is heard, so this has to cover that as well as the analysis window.
+const scopeSize = 1 << 15
 
 // driftSeconds is how far the queue may grow past its target before it is cut
 // back, so delay cannot build up on a live stream.
@@ -22,10 +26,10 @@ type pcmQueue struct {
 	boost   float64
 	applied float64
 
-	// energy and frames accumulate the samples played since the last call to
-	// level, before the volume boost is applied.
-	energy float64
-	frames int
+	// scope holds the last scopeSize samples handed to the device, mixed to
+	// mono and before the volume boost; scopePos is where the next one goes.
+	scope    [scopeSize]float32
+	scopePos int
 }
 
 func newPCMQueue(seconds int) *pcmQueue {
@@ -73,12 +77,13 @@ func (q *pcmQueue) Read(p []byte) (int, error) {
 	}
 	if !q.started {
 		clear(p[:size])
+		q.record(p[:size])
 		q.applied = q.boost
 		return size, nil
 	}
 	n := copy(p[:size], q.data[q.head:])
 	q.head += n
-	q.measure(p[:n])
+	q.record(p[:n])
 	amplify(p[:n], q.applied, q.boost)
 	q.applied = q.boost
 	return n, nil
@@ -90,24 +95,24 @@ func (q *pcmQueue) playing() bool {
 	return q.started
 }
 
-// measure adds the frames in pcm to the running level.
-func (q *pcmQueue) measure(pcm []byte) {
-	for i := 0; i+1 < len(pcm); i += 2 {
-		v := float64(int16(binary.LittleEndian.Uint16(pcm[i:]))) / 32768
-		q.energy += v * v
+// record adds the frames in pcm to the scope.
+func (q *pcmQueue) record(pcm []byte) {
+	for i := 0; i+3 < len(pcm); i += outputBytesPerFrame {
+		l := int16(binary.LittleEndian.Uint16(pcm[i:]))
+		r := int16(binary.LittleEndian.Uint16(pcm[i+2:]))
+		q.scope[q.scopePos] = (float32(l) + float32(r)) / 65536
+		q.scopePos = (q.scopePos + 1) % scopeSize
 	}
-	q.frames += len(pcm) / outputBytesPerFrame
 }
 
-// level returns the RMS of the samples played since the last call, from 0 to
-// 1, and starts a new measurement.
-func (q *pcmQueue) level() float64 {
+// samples fills dst with the samples that end delay frames before the newest
+// one handed to the device, oldest first.
+func (q *pcmQueue) samples(dst []float32, delay int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if q.frames == 0 {
-		return 0
-	}
-	rms := math.Sqrt(q.energy / float64(q.frames*2))
-	q.energy, q.frames = 0, 0
-	return rms
+	n := min(len(dst), scopeSize)
+	delay = min(max(delay, 0), scopeSize-n)
+	start := ((q.scopePos-delay-n)%scopeSize + scopeSize) % scopeSize
+	copied := copy(dst[:n], q.scope[start:])
+	copy(dst[copied:n], q.scope[:])
 }

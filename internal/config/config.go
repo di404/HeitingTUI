@@ -40,16 +40,25 @@ type Config struct {
 	ChatBuffer     int  `toml:"chat_buffer"`
 	ShowRoomTitle  bool `toml:"show_room_title"`
 	ShowRoomNumber bool `toml:"show_room_number"`
-	ShowWave       bool `toml:"show_wave"`
-	ColorMode      bool `toml:"color_mode"`
-	ShowShipLevel  bool `toml:"show_ship_level"`
-	ShowMedalName  bool `toml:"show_medal_name"`
-	ShowMedalLevel bool `toml:"show_medal_level"`
+	// Visualizer is the audio visualiser style: VisualizerOff,
+	// VisualizerBlocks or VisualizerLines.
+	Visualizer     string `toml:"visualizer"`
+	ColorMode      bool   `toml:"color_mode"`
+	ShowShipLevel  bool   `toml:"show_ship_level"`
+	ShowMedalName  bool   `toml:"show_medal_name"`
+	ShowMedalLevel bool   `toml:"show_medal_level"`
 
 	UserAgent string `toml:"user_agent"`
 
 	Rooms []Room `toml:"rooms"`
 }
+
+// Audio visualiser styles.
+const (
+	VisualizerOff    = "off"
+	VisualizerBlocks = "blocks"
+	VisualizerLines  = "lines"
+)
 
 // Default returns the settings used for anything missing from the file.
 func Default() *Config {
@@ -59,7 +68,7 @@ func Default() *Config {
 		ChatBuffer:     200,
 		ShowRoomTitle:  true,
 		ShowRoomNumber: true,
-		ShowWave:       true,
+		Visualizer:     VisualizerLines,
 		ColorMode:      true,
 		ShowShipLevel:  true,
 		ShowMedalName:  true,

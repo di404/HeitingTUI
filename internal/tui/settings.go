@@ -69,6 +69,27 @@ func intRow(label string, value *int, low, high, step int, apply func() tea.Cmd)
 	}
 }
 
+// choiceRow steps through options, shown by their names, with the arrow keys
+// or enter.
+func choiceRow(label string, value *string, options, names []string, apply func() tea.Cmd) settingRow {
+	current := 0
+	for i, o := range options {
+		if o == *value {
+			current = i
+		}
+	}
+	step := func(delta int) tea.Cmd {
+		*value = options[(current+delta+len(options))%len(options)]
+		return apply()
+	}
+	return settingRow{
+		label:  label,
+		value:  names[current],
+		adjust: step,
+		action: func() tea.Cmd { return step(1) },
+	}
+}
+
 func textRow(label string, value *string, empty string, apply func() tea.Cmd) settingRow {
 	shown := *value
 	if shown == "" {
@@ -112,9 +133,10 @@ func (m *Model) settingRows() []settingRow {
 		{label: "界面"},
 		boolRow("显示直播标题", &cfg.ShowRoomTitle, m.saveConfig),
 		boolRow("显示房间号", &cfg.ShowRoomNumber, m.saveConfig),
-		boolRow("音频波形", &cfg.ShowWave, func() tea.Cmd {
-			return tea.Batch(m.saveConfig(), m.startWave())
-		}),
+		choiceRow("音频可视化", &cfg.Visualizer,
+			[]string{config.VisualizerLines, config.VisualizerBlocks, config.VisualizerOff},
+			[]string{"线条", "色块", "关"},
+			func() tea.Cmd { return tea.Batch(m.saveConfig(), m.startVisualizer()) }),
 		{label: "网络"},
 		textRow("User-Agent", &cfg.UserAgent, "默认", applyUA),
 		{label: "账号"},

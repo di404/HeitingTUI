@@ -343,22 +343,24 @@ func TestNoDeviceFailsWithoutRetry(t *testing.T) {
 	}
 }
 
-func TestQueueLevel(t *testing.T) {
+func TestQueueSamples(t *testing.T) {
 	q := newPCMQueue(0)
-	block := make([]byte, outputBytesPerSecond/10)
-	for i := 0; i < len(block); i += 2 {
-		v := int16(16384)
-		if i/2%2 == 1 {
-			v = -16384
-		}
-		block[i], block[i+1] = byte(v), byte(uint16(v)>>8)
+	frames := scopeSize + 10
+	q.target = 0
+	block := make([]byte, frames*outputBytesPerFrame)
+	for i := range frames {
+		v := int16(i % 1000)
+		binary.LittleEndian.PutUint16(block[i*4:], uint16(v))
+		binary.LittleEndian.PutUint16(block[i*4+2:], uint16(v))
 	}
 	q.Write(block)
 	q.Read(make([]byte, len(block)))
-	if l := q.level(); math.Abs(l-0.5) > 0.001 {
-		t.Fatalf("level %.3f, want 0.5", l)
-	}
-	if q.level() != 0 {
-		t.Fatal("level not reset")
+	got := make([]float32, 4)
+	q.samples(got, 3)
+	for i, s := range got {
+		want := float32((frames-7+i)%1000) / 32768
+		if s != want {
+			t.Fatalf("sample %d: %v, want %v", i, s, want)
+		}
 	}
 }
