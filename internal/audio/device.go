@@ -23,6 +23,12 @@ type opener func(ctx context.Context, pcm io.Reader) (sink, error)
 // than left to oto's default so the visualizer can account for it.
 const deviceBuffer = 128 * time.Millisecond
 
+// playerBuffer is how far ahead oto's player reads from the queue. oto's
+// default is half a second, read in half-second chunks, which only adds delay
+// on top of the queue's own buffering. It has to stay well above one device
+// buffer (deviceBuffer/4) or the device would be handed short buffers.
+const playerBuffer = 100 * time.Millisecond
+
 // deviceContext opens the system's default output. oto allows one context per
 // process and cannot close it, so it lives until exit.
 var deviceContext = sync.OnceValues(func() (*oto.Context, error) {
@@ -75,6 +81,7 @@ func openDevice(ctx context.Context, pcm io.Reader) (sink, error) {
 			return nil, err
 		}
 		player := r.device.NewPlayer(pcm)
+		player.SetBufferSize(int(playerBuffer.Seconds()*outputRate) * outputBytesPerFrame)
 		player.Play()
 		return deviceTrack{Player: player, device: r.device}, nil
 	}

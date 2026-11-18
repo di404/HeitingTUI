@@ -6,9 +6,11 @@ import (
 )
 
 // scopeSize is how many of the most recently played mono samples are kept for
-// the spectrum. The device holds on to about half a second of audio before it
-// is heard, so this has to cover that as well as the analysis window.
-const scopeSize = 1 << 15
+// the visualizer. Audio is heard a while after the queue hands it over (up to
+// two player buffers, the device queue and the hardware, which on Bluetooth
+// can be a few hundred ms), so this has to cover all of that plus the analysis
+// window; when it doesn't, the visualizer runs ahead of the sound.
+const scopeSize = 1 << 16 // 1.37 s
 
 // driftSeconds is how far the queue may grow past its target before it is cut
 // back, so delay cannot build up on a live stream.

@@ -364,3 +364,13 @@ func TestQueueSamples(t *testing.T) {
 		}
 	}
 }
+
+// The scope has to reach back past everything between the queue and the
+// speaker, or the visualizer runs ahead of the sound.
+func TestScopeCoversOutputLatency(t *testing.T) {
+	const bluetooth = 400 * time.Millisecond
+	worst := 2*playerBuffer + deviceBuffer + bluetooth + 20*time.Millisecond
+	if frames := int(worst.Seconds() * outputRate); frames > scopeSize {
+		t.Fatalf("worst-case delay %v needs %d frames, scope holds %d", worst, frames, scopeSize)
+	}
+}
