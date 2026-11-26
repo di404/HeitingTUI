@@ -27,9 +27,19 @@ var (
 
 var shipNames = map[int]string{1: "总", 2: "提", 3: "舰"}
 
+// shipWidth is the terminal cells taken by one of shipNames.
+const shipWidth = 2
+
 // renderDanmu draws one message, wrapped to width.
 func renderDanmu(d *bili.Danmu, cfg *config.Config, width int) string {
 	var line strings.Builder
+	if cfg.ShowShipLevel {
+		line.WriteString(renderShip(d.Medal, cfg))
+		// With no medal parts to follow, separate the column from the name.
+		if !cfg.ShowMedalName && !cfg.ShowMedalLevel {
+			line.WriteString("\u00a0")
+		}
+	}
 	if d.Medal != nil {
 		line.WriteString(renderMedal(d.Medal, cfg))
 	}
@@ -49,13 +59,21 @@ func colored(text, color string, cfg *config.Config) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(text)
 }
 
-func renderMedal(medal *bili.Medal, cfg *config.Config) string {
-	var out strings.Builder
-	if cfg.ShowShipLevel {
+// renderShip draws the ship badge column. Senders without a ship get blank
+// cells of the same width, so every line starts its medal or name in one column.
+func renderShip(medal *bili.Medal, cfg *config.Config) string {
+	if medal != nil {
 		if ship := shipNames[medal.ShipLevel]; ship != "" {
-			out.WriteString(colored(ship, "#F87299", cfg))
+			return colored(ship, "#F87299", cfg)
 		}
 	}
+	// Non-breaking spaces: ordinary ones are a wrap point, which would leave
+	// the first line empty before a long name.
+	return strings.Repeat("\u00a0", shipWidth)
+}
+
+func renderMedal(medal *bili.Medal, cfg *config.Config) string {
+	var out strings.Builder
 	if cfg.ShowMedalName {
 		style := lipgloss.NewStyle()
 		if cfg.ColorMode {
@@ -106,3 +124,4 @@ func scrollWindow(cursor, total, height int) (int, int) {
 	}
 	return start, start + height
 }
+
