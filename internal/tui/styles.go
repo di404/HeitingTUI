@@ -125,3 +125,48 @@ func scrollWindow(cursor, total, height int) (int, int) {
 	return start, start + height
 }
 
+// overlay draws box centered over a width×height view. The view underneath is
+// dimmed, so the box reads as the layer in front.
+func overlay(view, box string, width, height int) string {
+	lines := strings.Split(view, "\n")
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	boxLines := strings.Split(box, "\n")
+	boxWidth := lipgloss.Width(box)
+	x := max((width-boxWidth)/2, 0)
+	y := max((height-len(boxLines))/2, 0)
+	for i, line := range lines {
+		plain := ansi.Strip(line)
+		if i < y || i >= y+len(boxLines) {
+			lines[i] = dimStyle.Render(plain)
+			continue
+		}
+		left, right := splitAround(plain, x, x+boxWidth)
+		lines[i] = dimStyle.Render(left) + boxLines[i-y] + dimStyle.Render(right)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// splitAround returns the cells of plain before column from and after column
+// to. A wide character cut by either edge becomes spaces, so columns stay put.
+func splitAround(plain string, from, to int) (string, string) {
+	var left, right strings.Builder
+	col := 0
+	for _, r := range plain {
+		w := ansi.StringWidth(string(r))
+		switch {
+		case col+w <= from:
+			left.WriteRune(r)
+		case col >= to:
+			right.WriteRune(r)
+		case col < to && col+w > to:
+			right.WriteString(strings.Repeat(" ", col+w-to))
+		}
+		col += w
+	}
+	if pad := from - ansi.StringWidth(left.String()); pad > 0 {
+		left.WriteString(strings.Repeat(" ", pad))
+	}
+	return left.String(), right.String()
+}

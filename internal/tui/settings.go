@@ -140,7 +140,8 @@ func (m *Model) settingRows() []settingRow {
 		{label: "网络"},
 		textRow("User-Agent", &cfg.UserAgent, "默认", applyUA),
 		{label: "账号"},
-		boolRow("匿名模式", &cfg.Anonymous, m.applyAnonymous),
+		{label: "匿名模式", value: onOff(cfg.Anonymous), toggle: true,
+			adjust: func(int) tea.Cmd { return m.toggleAnonymous() }},
 	}
 	if !cfg.Anonymous {
 		rows = append(rows, account)
@@ -265,6 +266,57 @@ func (m *Model) logout() tea.Cmd {
 	}
 	m.client.ClearLogin()
 	return m.reconnectAccount()
+}
+
+// toggleAnonymous turns anonymous mode on at once, but only asks to turn it
+// off: leaving it by mistake would show the account in the room.
+func (m *Model) toggleAnonymous() tea.Cmd {
+	if m.cfg.Anonymous {
+		m.confirmingReveal, m.revealYes = true, false
+		return nil
+	}
+	m.cfg.Anonymous = true
+	return m.applyAnonymous()
+}
+
+// handleRevealKey drives the dialog asking to leave anonymous mode. It starts
+// on 否, so enter pressed out of habit keeps anonymity.
+func (m *Model) handleRevealKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "left", "h", "right", "l", "tab", "shift+tab":
+		m.revealYes = !m.revealYes
+	case "esc", "n", "q":
+		m.confirmingReveal = false
+	case "y":
+		m.revealYes = true
+		fallthrough
+	case "enter", " ":
+		m.confirmingReveal = false
+		if m.revealYes {
+			m.cfg.Anonymous = false
+			return m.applyAnonymous()
+		}
+	}
+	return nil
+}
+
+var (
+	buttonStyle         = lipgloss.NewStyle().Width(8).Align(lipgloss.Center).Foreground(dimColor)
+	selectedButtonStyle = buttonStyle.Foreground(lipgloss.Color("#FFFFFF")).Background(accentColor).Bold(true)
+)
+
+func (m *Model) revealView() string {
+	no, yes := selectedButtonStyle, buttonStyle
+	if m.revealYes {
+		no, yes = buttonStyle, selectedButtonStyle
+	}
+	buttons := no.Render("否") + "    " + yes.Render("是")
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(accentColor).
+		Padding(1, 4).
+		Align(lipgloss.Center).
+		Render(titleStyle.Render("关闭匿名模式？") + "\n\n" + buttons)
 }
 
 // applyAnonymous swaps the client's identity and reconnects with it. Audio is

@@ -66,6 +66,7 @@ func TestAnonymousModeDropsAndRestoresLogin(t *testing.T) {
 	}
 
 	toggleAnonymous(t, m)
+	m.handleKey(runes("y"))
 	if !hasLogin(m.client) {
 		t.Fatal("login not restored")
 	}

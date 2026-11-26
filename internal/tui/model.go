@@ -85,6 +85,10 @@ type Model struct {
 	// pageMuted silences this run after the room page opens, which plays the
 	// same audio. It is never saved: by the next run the page may be closed.
 	pageMuted bool
+	// confirmingReveal holds a request to leave anonymous mode until the user
+	// confirms it, since a stray key would enter rooms under the account.
+	confirmingReveal bool
+	revealYes        bool
 }
 
 // New builds the interface. initialRoom, if non-zero, overrides the saved room.
@@ -376,6 +380,9 @@ func (m *Model) handleSessionEvent(event any) tea.Cmd {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
+	if m.confirmingReveal {
+		return m.handleRevealKey(msg)
+	}
 	switch m.screen {
 	case screenRooms:
 		return m.handleRoomsKey(msg)
@@ -414,6 +421,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "o":
 		return m.openRoomPage()
+	case "n":
+		return m.toggleAnonymous()
 	}
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
@@ -544,6 +553,9 @@ func (m *Model) View() string {
 	default:
 		view = m.mainView()
 	}
+	if m.confirmingReveal {
+		view = overlay(view, m.revealView(), m.width, m.height)
+	}
 	return indent(view, marginX)
 }
 
@@ -563,7 +575,7 @@ func (m *Model) mainView() string {
 		m.chatView(),
 		rule,
 		m.input.View(),
-		m.hintView("tab 输入  m 静音  +/- 音量  o 打开直播间  r 房间  s 设置  q 退出"),
+		m.hintView("tab 输入  m 静音  +/- 音量  o 打开直播间  n 匿名  r 房间  s 设置  q 退出"),
 	}, "\n")
 }
 

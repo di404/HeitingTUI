@@ -93,8 +93,49 @@ func TestAnonymousToggleInRoomListDoesNotJoin(t *testing.T) {
 	}
 
 	m.handleKey(runes("n"))
+	m.handleKey(runes("y"))
 	if m.cfg.Anonymous || !hasLogin(m.client) {
 		t.Fatal("login not restored")
+	}
+}
+
+func TestLeavingAnonymousNeedsConfirmation(t *testing.T) {
+	m := newSavedRoomModel(t)
+	const cookies = "SESSDATA=a; bili_jct=b"
+	if err := config.SaveCookie(cookies); err != nil {
+		t.Fatal(err)
+	}
+	m.cfg.Anonymous = true
+	m.Init()
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	defer m.Close()
+
+	m.handleKey(runes("n"))
+	if !m.cfg.Anonymous {
+		t.Fatal("left anonymous mode without confirming")
+	}
+	if view := m.View(); !strings.Contains(view, "关闭匿名模式") || !strings.Contains(view, "tab 输入") {
+		t.Fatal("confirmation not drawn over the main screen")
+	}
+	for _, key := range []tea.KeyMsg{runes("n"), {Type: tea.KeyEnter}} {
+		m.handleKey(key)
+		if !m.cfg.Anonymous || hasLogin(m.client) || m.confirmingReveal {
+			t.Fatalf("%q did not cancel", key)
+		}
+		m.handleKey(runes("n"))
+	}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyRight})
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.cfg.Anonymous || !hasLogin(m.client) {
+		t.Fatal("choosing 是 did not leave anonymous mode")
+	}
+	if m.screen != screenMain {
+		t.Fatalf("screen %d", m.screen)
+	}
+
+	m.handleKey(runes("n"))
+	if !m.cfg.Anonymous || m.confirmingReveal {
+		t.Fatal("entering anonymous mode asked for confirmation")
 	}
 }
 

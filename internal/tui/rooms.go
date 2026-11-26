@@ -126,8 +126,7 @@ func (m *Model) handleRoomsKey(msg tea.KeyMsg) tea.Cmd {
 			return tea.Quit
 		}
 	case "n":
-		m.cfg.Anonymous = !m.cfg.Anonymous
-		return m.applyAnonymous()
+		return m.toggleAnonymous()
 	case "up", "k":
 		m.rooms.cursor = max(m.rooms.cursor-1, 0)
 	case "down", "j":
