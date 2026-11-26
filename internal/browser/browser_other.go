@@ -4,8 +4,8 @@ package browser
 
 import "os/exec"
 
-func open(url string) error {
-	return exec.Command("xdg-open", url).Start()
+func open(url string) (Tabs, error) {
+	return nil, exec.Command("xdg-open", url).Start()
 }
 
 var privateCommands = [][]string{
@@ -16,11 +16,11 @@ var privateCommands = [][]string{
 	{"firefox", "--private-window"},
 }
 
-func openPrivate(url string) error {
+func openPrivate(url string) (Tabs, error) {
 	for _, c := range privateCommands {
 		if path, err := exec.LookPath(c[0]); err == nil {
-			return exec.Command(path, c[1], url).Start()
+			return nil, exec.Command(path, c[1], url).Start()
 		}
 	}
-	return ErrNoPrivateBrowser
+	return nil, ErrNoPrivateBrowser
 }

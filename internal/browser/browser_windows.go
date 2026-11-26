@@ -5,11 +5,11 @@ import (
 	"strings"
 )
 
-func open(url string) error {
-	return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+func open(url string) (Tabs, error) {
+	return nil, exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
 }
 
-func openPrivate(url string) error {
+func openPrivate(url string) (Tabs, error) {
 	exe, flag := "msedge", "--inprivate" // Edge ships with Windows.
 	progID := defaultProgID()
 	switch {
@@ -22,9 +22,9 @@ func openPrivate(url string) error {
 	}
 	// start resolves browsers through the App Paths registry key.
 	if exec.Command("cmd", "/c", "start", "", exe, flag, url).Run() != nil {
-		return ErrNoPrivateBrowser
+		return nil, ErrNoPrivateBrowser
 	}
-	return nil
+	return nil, nil
 }
 
 func defaultProgID() string {

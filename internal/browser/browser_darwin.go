@@ -2,6 +2,8 @@ package browser
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,11 +22,30 @@ var privateFlags = []struct{ bundleID, flag string }{
 	{"com.operasoftware.opera", "--private"},
 }
 
-func open(url string) error {
-	return exec.Command("open", url).Run()
+// scriptable lists the browsers (lower-case bundle IDs) whose AppleScript
+// dictionary gives every window's tabs a URL. Firefox and Opera have none.
+var scriptable = map[string]bool{
+	"com.apple.safari":           true,
+	"com.google.chrome":          true,
+	"com.microsoft.edgemac":      true,
+	"com.brave.browser":          true,
+	"com.vivaldi.vivaldi":        true,
+	"org.chromium.chromium":      true,
+	"company.thebrowser.browser": true, // Arc
 }
 
-func openPrivate(url string) error {
+func open(url string) (Tabs, error) {
+	if err := exec.Command("open", url).Run(); err != nil {
+		return nil, err
+	}
+	def := defaultBrowser()
+	if def == "" {
+		def = "com.apple.safari"
+	}
+	return tabsOf(def), nil
+}
+
+func openPrivate(url string) (Tabs, error) {
 	order := make([]struct{ bundleID, flag string }, 0, len(privateFlags))
 	def := defaultBrowser()
 	for _, b := range privateFlags {
@@ -40,10 +61,46 @@ func openPrivate(url string) error {
 	for _, b := range order {
 		// open fails when no app has this bundle ID, so the next one is tried.
 		if exec.Command("open", "-n", "-b", b.bundleID, "--args", b.flag, url).Run() == nil {
-			return nil
+			return tabsOf(b.bundleID), nil
 		}
 	}
-	return ErrNoPrivateBrowser
+	return nil, ErrNoPrivateBrowser
+}
+
+// tabsOf asks the browser for its tab URLs through AppleScript, or returns nil
+// when the browser cannot be asked. The first call makes macOS ask the user to
+// let this program control the browser; a refusal surfaces as an error.
+func tabsOf(bundleID string) Tabs {
+	if !scriptable[bundleID] {
+		return nil
+	}
+	// The running check comes first: telling an app that has quit launches it.
+	script := fmt.Sprintf(`if application id %[1]q is not running then return ""
+set out to {}
+tell application id %[1]q
+	repeat with w in windows
+		set out to out & (URL of tabs of w)
+	end repeat
+end tell
+set AppleScript's text item delimiters to linefeed
+return out as text`, bundleID)
+	return func() ([]string, error) {
+		out, err := exec.Command("osascript", "-e", script).Output()
+		if err != nil {
+			var exit *exec.ExitError
+			if errors.As(err, &exit) && len(exit.Stderr) > 0 {
+				return nil, fmt.Errorf("%s", strings.TrimSpace(string(exit.Stderr)))
+			}
+			return nil, err
+		}
+		var urls []string
+		for _, line := range strings.Split(string(out), "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				urls = append(urls, line)
+			}
+		}
+		return urls, nil
+	}
 }
 
 // defaultBrowser returns the lower-case bundle ID of the https handler, or ""

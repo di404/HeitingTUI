@@ -78,13 +78,15 @@ type Model struct {
 	// IMEControl, if set, turns the system input method on or off.
 	IMEControl func(enabled bool)
 	// OpenBrowser, if set, opens url in the browser; private asks for a
-	// private window and must fail rather than use a normal one.
-	OpenBrowser func(url string, private bool) error
+	// private window and must fail rather than use a normal one. tabs, if not
+	// nil, lists the URLs open in that browser, to tell when the page closes.
+	OpenBrowser func(url string, private bool) (tabs func() ([]string, error), err error)
 	asciiForced bool
 	termBlurred bool
 	// pageMuted silences this run after the room page opens, which plays the
 	// same audio. It is never saved: by the next run the page may be closed.
 	pageMuted bool
+	page      pageWatch
 	// confirmingReveal holds a request to leave anonymous mode until the user
 	// confirms it, since a stray key would enter rooms under the account.
 	confirmingReveal bool
@@ -220,7 +222,11 @@ func (m *Model) saveConfig() tea.Cmd {
 	return nil
 }
 
-type browserOpenedMsg struct{ err error }
+type browserOpenedMsg struct {
+	tabs  func() ([]string, error)
+	rooms []uint64
+	err   error
+}
 
 // openRoomPage opens the room's web page. In anonymous mode it uses a private
 // window, so the browser's login does not enter the room under the account.
@@ -233,8 +239,16 @@ func (m *Model) openRoomPage() tea.Cmd {
 		roomID = m.displayRoomID()
 	}
 	url := fmt.Sprintf("https://live.bilibili.com/%d", roomID)
+	// The page may show either number, so a tab with either one counts.
+	rooms := []uint64{roomID}
+	if m.room != nil {
+		rooms = append(rooms, m.room.RoomID)
+	}
 	open, private := m.OpenBrowser, m.cfg.Anonymous
-	return func() tea.Msg { return browserOpenedMsg{err: open(url, private)} }
+	return func() tea.Msg {
+		tabs, err := open(url, private)
+		return browserOpenedMsg{tabs: tabs, rooms: rooms, err: err}
+	}
 }
 
 func (m *Model) flash(text string) tea.Cmd {
@@ -317,7 +331,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		m.pageMuted = true
 		m.player.Configure(m.audioOptions())
-		return nil
+		return m.watchPage(msg.tabs, msg.rooms)
+	case pageTickMsg, pageTabsMsg:
+		return m.updatePage(msg)
 	}
 
 	if cmd, handled := m.updateRooms(msg); handled {

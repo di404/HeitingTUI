@@ -64,11 +64,12 @@ func run() error {
 	defer model.Close()
 
 	model.IMEControl = ime.SetEnabled
-	model.OpenBrowser = func(url string, private bool) error {
+	model.OpenBrowser = func(url string, private bool) (func() ([]string, error), error) {
+		open := browser.Open
 		if private {
-			return browser.OpenPrivate(url)
+			open = browser.OpenPrivate
 		}
-		return browser.Open(url)
+		return open(url)
 	}
 	defer ime.SetEnabled(true)
 
